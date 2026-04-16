@@ -254,26 +254,10 @@ func (r *WorkflowJobResource) Create(ctx context.Context, req resource.CreateReq
 	}
 	data.Labels = configData.Labels
 
-	resp.Diagnostics.Append(data.LaunchWorkflowJobWithResponse(r.client)...)
+	// Launch job and wait for completion if configured
+	resp.Diagnostics.Append(r.launchAndWait(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
-	}
-
-	// If the job was configured to wait for completion, start polling the job status
-	// and wait for it to complete before marking the resource as created
-	if data.WaitForCompletion.ValueBool() {
-		retryProgressFunc := func(status string) {
-			tflog.Debug(ctx, "Job status update", map[string]interface{}{
-				"status": status,
-				"url":    data.URL.ValueString(),
-			})
-		}
-		status, diags := data.WaitForWorkflowJobCompletion(ctx, r.client, data.URL.ValueString(), retryProgressFunc)
-		resp.Diagnostics.Append(diags...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-		data.Status = types.StringValue(status)
 	}
 
 	// Save updated data into Terraform state
@@ -343,27 +327,10 @@ func (r *WorkflowJobResource) Update(ctx context.Context, req resource.UpdateReq
 	}
 	data.Labels = configData.Labels
 
-	// Create new Workflow Job from workflow job template
-	resp.Diagnostics.Append(data.LaunchWorkflowJobWithResponse(r.client)...)
+	// Launch job and wait for completion if configured
+	resp.Diagnostics.Append(r.launchAndWait(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
-	}
-
-	// If the job was configured to wait for completion, start polling the job status
-	// and wait for it to complete before marking the resource as created
-	if data.WaitForCompletion.ValueBool() {
-		retryProgressFunc := func(status string) {
-			tflog.Debug(ctx, "Job status update", map[string]interface{}{
-				"status": status,
-				"url":    data.URL.ValueString(),
-			})
-		}
-		status, diags := data.WaitForWorkflowJobCompletion(ctx, r.client, data.URL.ValueString(), retryProgressFunc)
-		resp.Diagnostics.Append(diags...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-		data.Status = types.StringValue(status)
 	}
 
 	// Save updated data into Terraform state
@@ -376,6 +343,39 @@ func (r *WorkflowJobResource) Update(ctx context.Context, req resource.UpdateReq
 // Delete is intentionally left blank Job and Workflow Job Resources.
 // Current guidance is to manage this inside AAP.
 func (r WorkflowJobResource) Delete(_ context.Context, _ resource.DeleteRequest, _ *resource.DeleteResponse) {
+}
+
+// launchAndWait launches a workflow job and optionally waits for completion.
+// This is shared logic between Create and Update operations.
+func (r *WorkflowJobResource) launchAndWait(
+	ctx context.Context,
+	data *WorkflowJobResourceModel,
+) diag.Diagnostics {
+	var diags diag.Diagnostics
+
+	// Launch the workflow job
+	diags.Append(data.LaunchWorkflowJobWithResponse(r.client)...)
+	if diags.HasError() {
+		return diags
+	}
+
+	// Wait for completion if configured
+	if data.WaitForCompletion.ValueBool() {
+		retryProgressFunc := func(status string) {
+			tflog.Debug(ctx, "Job status update", map[string]interface{}{
+				"status": status,
+				"url":    data.URL.ValueString(),
+			})
+		}
+		status, waitDiags := data.WaitForWorkflowJobCompletion(ctx, r.client, data.URL.ValueString(), retryProgressFunc)
+		diags.Append(waitDiags...)
+		if diags.HasError() {
+			return diags
+		}
+		data.Status = types.StringValue(status)
+	}
+
+	return diags
 }
 
 // CreateRequestBody creates a JSON encoded request body from the workflow job resource data.
@@ -485,11 +485,7 @@ func (r *WorkflowJobModel) CanWorkflowJobBeLaunched(client ProviderHTTPClient) (
 		return diags
 	}
 
-	validations := []struct {
-		askOnLaunch bool
-		isNull      bool
-		fieldName   string
-	}{
+	validations := []LaunchFieldValidation{
 		{launchConfig.AskVariablesOnLaunch, r.ExtraVars.IsNull(), "extra_vars"},
 		{launchConfig.AskTagsOnLaunch, r.JobTags.IsNull(), "job_tags"},
 		{launchConfig.AskSkipTagsOnLaunch, r.SkipTags.IsNull(), "skip_tags"},
@@ -498,21 +494,7 @@ func (r *WorkflowJobModel) CanWorkflowJobBeLaunched(client ProviderHTTPClient) (
 		{launchConfig.AskLabelsOnLaunch, r.Labels.IsNull(), "labels"},
 	}
 
-	for _, v := range validations {
-		if v.askOnLaunch && v.isNull {
-			diags.AddError(
-				"Missing required field",
-				fmt.Sprintf("Workflow Job Template requires '%s' to be provided at launch", v.fieldName),
-			)
-		}
-		if !v.askOnLaunch && !v.isNull {
-			diags.AddWarning(
-				"Field will be ignored",
-				fmt.Sprintf("'%s' is provided but the Workflow Job Template does not allow it to be specified at launch", v.fieldName),
-			)
-		}
-	}
-
+	diags.Append(ValidateLaunchFields(validations, "Workflow Job Template")...)
 	return diags
 }
 
@@ -553,7 +535,12 @@ func (r *WorkflowJobResourceModel) LaunchWorkflowJobWithResponse(client Provider
 
 // WaitForWorkflowJobCompletion waits for a workflow job to reach a final state.
 // It returns the final status and any diagnostics.
-func (r *WorkflowJobModel) WaitForWorkflowJobCompletion(ctx context.Context, client ProviderHTTPClient, jobURL string, retryProgressFunc RetryProgressFunc) (status string, diags diag.Diagnostics) {
+func (r *WorkflowJobModel) WaitForWorkflowJobCompletion(
+	ctx context.Context,
+	client ProviderHTTPClient,
+	jobURL string,
+	retryProgressFunc RetryProgressFunc,
+) (status string, diags diag.Diagnostics) {
 	timeout := time.Duration(r.WaitForCompletionTimeout.ValueInt64()) * time.Second
 	err := retry.RetryContext(ctx, timeout, retryUntilAAPJobReachesAnyFinalState(ctx, client, retryProgressFunc, jobURL, &status))
 	if err != nil {

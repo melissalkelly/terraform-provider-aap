@@ -721,11 +721,7 @@ func (r *JobModel) CanJobBeLaunched(client ProviderHTTPClient) (diags diag.Diagn
 		return diags
 	}
 
-	validations := []struct {
-		askOnLaunch bool
-		isNull      bool
-		fieldName   string
-	}{
+	validations := []LaunchFieldValidation{
 		{launchConfig.AskVariablesOnLaunch, r.ExtraVars.IsNull(), "extra_vars"},
 		{launchConfig.AskTagsOnLaunch, r.JobTags.IsNull(), "job_tags"},
 		{launchConfig.AskSkipTagsOnLaunch, r.SkipTags.IsNull(), "skip_tags"},
@@ -742,20 +738,7 @@ func (r *JobModel) CanJobBeLaunched(client ProviderHTTPClient) (diags diag.Diagn
 		{launchConfig.AskJobSliceCountOnLaunch, r.JobSliceCount.IsNull(), "job_slice_count"},
 	}
 
-	for _, v := range validations {
-		if v.askOnLaunch && v.isNull {
-			diags.AddError(
-				"Missing required field",
-				fmt.Sprintf("Job Template requires '%s' to be provided at launch", v.fieldName),
-			)
-		}
-		if !v.askOnLaunch && !v.isNull {
-			diags.AddWarning(
-				"Field will be ignored",
-				fmt.Sprintf("'%s' is provided but the Job Template does not allow it to be specified at launch", v.fieldName),
-			)
-		}
-	}
+	diags.Append(ValidateLaunchFields(validations, "Job Template")...)
 
 	return diags
 }

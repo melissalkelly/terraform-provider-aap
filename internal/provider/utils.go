@@ -125,3 +125,33 @@ func ConvertListToInt64Slice(list types.List) []int64 {
 	}
 	return result
 }
+
+// LaunchFieldValidation represents a single field validation for launch-time parameters.
+type LaunchFieldValidation struct {
+	AskOnLaunch bool
+	IsNull      bool
+	FieldName   string
+}
+
+// ValidateLaunchFields validates that required fields are provided and warns about ignored fields.
+// Used by both Job and WorkflowJob launch validation.
+func ValidateLaunchFields(validations []LaunchFieldValidation, templateType string) diag.Diagnostics {
+	var diags diag.Diagnostics
+
+	for _, v := range validations {
+		if v.AskOnLaunch && v.IsNull {
+			diags.AddError(
+				"Missing required field",
+				fmt.Sprintf("%s requires '%s' to be provided at launch", templateType, v.FieldName),
+			)
+		}
+		if !v.AskOnLaunch && !v.IsNull {
+			diags.AddWarning(
+				"Field will be ignored",
+				fmt.Sprintf("'%s' is provided but the %s does not allow it to be specified at launch", v.FieldName, templateType),
+			)
+		}
+	}
+
+	return diags
+}
