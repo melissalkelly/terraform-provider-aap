@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/ansible/terraform-provider-aap/internal/provider/customtypes"
 	"github.com/hashicorp/terraform-plugin-framework/action"
@@ -12,7 +11,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 )
 
 // WorkflowJobAction represents a workflow job action that can be executed in AAP.
@@ -136,16 +134,14 @@ func (a *WorkflowJobAction) Invoke(ctx context.Context, req action.InvokeRequest
 		if config.WaitForCompletionTimeout.IsNull() {
 			config.WaitForCompletionTimeout = types.Int64Value(waitForCompletionTimeoutDefault)
 		}
-		timeout := time.Duration(config.WaitForCompletionTimeout.ValueInt64()) * time.Second
-		var status string
 		retryProgressFunc := func(status string) {
 			response.SendProgress(action.InvokeProgressEvent{
 				Message: fmt.Sprintf("Workflow job at: %s is in status: %s", jobResponse.URL, status),
 			})
 		}
-		err := retry.RetryContext(ctx, timeout, retryUntilAAPJobReachesAnyFinalState(ctx, a.client, retryProgressFunc, jobResponse.URL, &status))
-		if err != nil {
-			response.Diagnostics.Append(diag.NewErrorDiagnostic("error when waiting for AAP job to complete", err.Error()))
+		status, diags := config.WaitForWorkflowJobCompletion(ctx, a.client, jobResponse.URL, retryProgressFunc)
+		response.Diagnostics.Append(diags...)
+		if response.Diagnostics.HasError() {
 			return
 		}
 		jobResponse.Status = status
