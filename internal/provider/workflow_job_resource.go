@@ -1,7 +1,6 @@
 package provider
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -10,7 +9,6 @@ import (
 	"time"
 
 	"github.com/ansible/terraform-provider-aap/internal/provider/customtypes"
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -435,21 +433,7 @@ func (r *WorkflowJobResourceModel) ParseHTTPResponse(body []byte) diag.Diagnosti
 
 // ParseIgnoredFields parses ignored fields from the AAP API response.
 func (r *WorkflowJobResourceModel) ParseIgnoredFields(ignoredFields map[string]interface{}) (diags diag.Diagnostics) {
-	r.IgnoredFields = types.ListNull(types.StringType)
-	var keysList = []attr.Value{}
-
-	for k := range ignoredFields {
-		key := k
-		if v, ok := keyMapping[k]; ok {
-			key = v
-		}
-		keysList = append(keysList, types.StringValue(key))
-	}
-
-	if len(keysList) > 0 {
-		r.IgnoredFields, diags = types.ListValue(types.StringType, keysList)
-	}
-
+	r.IgnoredFields, diags = ParseIgnoredFieldsToList(ignoredFields)
 	return diags
 }
 
@@ -507,22 +491,8 @@ func (r *WorkflowJobModel) LaunchWorkflowJob(client ProviderHTTPClient) ([]byte,
 		return nil, diags
 	}
 
-	// Create request body from workflow job data
-	requestBody, diagCreateReq := r.CreateRequestBody()
-	diags.Append(diagCreateReq...)
-	if diags.HasError() {
-		return nil, diags
-	}
-
-	requestData := bytes.NewReader(requestBody)
-	var postURL = path.Join(client.getAPIEndpoint(), "workflow_job_templates", r.TemplateID.String(), "launch")
-	resp, body, err := client.doRequest(http.MethodPost, postURL, nil, requestData)
-	diags.Append(ValidateResponse(resp, body, err, []int{http.StatusCreated})...)
-	if diags.HasError() {
-		return nil, diags
-	}
-
-	return body, diags
+	// Use shared launch helper
+	return LaunchJobTemplate(client, "workflow_job_templates", r)
 }
 
 func (r *WorkflowJobResourceModel) LaunchWorkflowJobWithResponse(client ProviderHTTPClient) diag.Diagnostics {
@@ -548,4 +518,9 @@ func (r *WorkflowJobModel) WaitForWorkflowJobCompletion(
 		return status, diags
 	}
 	return status, diags
+}
+
+// GetTemplateID implements the LaunchableJob interface.
+func (r *WorkflowJobModel) GetTemplateID() int64 {
+	return r.TemplateID.ValueInt64()
 }

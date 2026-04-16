@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -154,4 +155,65 @@ func ValidateLaunchFields(validations []LaunchFieldValidation, templateType stri
 	}
 
 	return diags
+}
+
+// ParseIgnoredFieldsToList converts ignored fields from the AAP API response into a types.List.
+// This is shared logic used by Job and WorkflowJob resources.
+func ParseIgnoredFieldsToList(ignoredFields map[string]interface{}) (types.List, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	if len(ignoredFields) == 0 {
+		return types.ListNull(types.StringType), diags
+	}
+
+	var keysList = []attr.Value{}
+	for k := range ignoredFields {
+		key := k
+		if v, ok := keyMapping[k]; ok {
+			key = v
+		}
+		keysList = append(keysList, types.StringValue(key))
+	}
+
+	if len(keysList) == 0 {
+		return types.ListNull(types.StringType), diags
+	}
+
+	list, listDiags := types.ListValue(types.StringType, keysList)
+	diags.Append(listDiags...)
+	return list, diags
+}
+
+// LaunchableJob is an interface for job types that can be launched (Job or WorkflowJob).
+type LaunchableJob interface {
+	CreateRequestBody() ([]byte, diag.Diagnostics)
+	GetTemplateID() int64
+}
+
+// LaunchJobTemplate performs the common POST request to launch a job or workflow job.
+// It takes the template type ("job_templates" or "workflow_job_templates") and the model.
+func LaunchJobTemplate(
+	client ProviderHTTPClient,
+	templateType string,
+	model LaunchableJob,
+) ([]byte, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	// Create request body
+	requestBody, diagCreateReq := model.CreateRequestBody()
+	diags.Append(diagCreateReq...)
+	if diags.HasError() {
+		return nil, diags
+	}
+
+	// POST to launch endpoint
+	requestData := bytes.NewReader(requestBody)
+	postURL := path.Join(client.getAPIEndpoint(), templateType, fmt.Sprintf("%d", model.GetTemplateID()), "launch")
+	resp, body, err := client.doRequest(http.MethodPost, postURL, nil, requestData)
+	diags.Append(ValidateResponse(resp, body, err, []int{http.StatusCreated})...)
+	if diags.HasError() {
+		return nil, diags
+	}
+
+	return body, diags
 }
