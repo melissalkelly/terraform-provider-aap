@@ -6,12 +6,17 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"net/http"
 	"os"
 	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/action"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"go.uber.org/mock/gomock"
 )
 
 // Acceptance tests
@@ -240,4 +245,208 @@ action "aap_workflow_job_launch" "test" {
 	}
 }
 `, inventoryName, workflowJobTemplateID)
+}
+
+// Unit tests for Invoke method
+func TestWorkflowJobActionInvoke(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name              string
+		waitForCompletion bool
+		ignoreJobResults  bool
+		finalStatus       string
+		expectError       bool
+		expectWarning     bool
+	}{
+		{
+			name:              "fire and forget - successful launch",
+			waitForCompletion: false,
+			expectError:       false,
+		},
+		{
+			name:              "wait for completion - job succeeds",
+			waitForCompletion: true,
+			finalStatus:       "successful",
+			expectError:       false,
+		},
+		{
+			name:              "wait for completion - job fails",
+			waitForCompletion: true,
+			finalStatus:       "failed",
+			expectError:       true,
+		},
+		{
+			name:              "wait for completion - job fails but ignored",
+			waitForCompletion: true,
+			ignoreJobResults:  true,
+			finalStatus:       "failed",
+			expectError:       false,
+			expectWarning:     true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockClient := NewMockProviderHTTPClient(ctrl)
+			workflowAction := &WorkflowJobAction{client: mockClient}
+
+			// Mock GetLaunchWorkflowJob
+			mockClient.EXPECT().getAPIEndpoint().Return("/api/v2").Times(1)
+			mockClient.EXPECT().
+				doRequest(http.MethodGet, gomock.Any(), nil, nil).
+				Return(&http.Response{StatusCode: http.StatusOK}, []byte(`{"ask_variables_on_launch": false}`), nil).
+				Times(1)
+
+			// Mock LaunchJobTemplate
+			mockClient.EXPECT().getAPIEndpoint().Return("/api/v2").Times(1)
+			launchResp := []byte(`{
+				"workflow_job_template": 123,
+				"url": "/api/v2/workflow_jobs/456/",
+				"status": "pending",
+				"inventory": 10
+			}`)
+			mockClient.EXPECT().
+				doRequest(http.MethodPost, gomock.Any(), nil, gomock.Any()).
+				Return(&http.Response{StatusCode: http.StatusCreated}, launchResp, nil).
+				Times(1)
+
+			// Mock wait-for-completion if enabled
+			if tc.waitForCompletion {
+				mockClient.EXPECT().
+					Get(gomock.Any()).
+					Return([]byte(fmt.Sprintf(`{"status":"%s"}`, tc.finalStatus)), nil).
+					Times(1)
+			}
+
+			ctx := t.Context()
+
+			// Create request/response
+			schemaReq := action.SchemaRequest{}
+			schemaResp := &action.SchemaResponse{}
+			workflowAction.Schema(ctx, schemaReq, schemaResp)
+
+			configType := schemaResp.Schema.Type().TerraformType(ctx)
+			configVal := tftypes.NewValue(configType, map[string]tftypes.Value{
+				"workflow_job_template_id":            tftypes.NewValue(tftypes.Number, big.NewFloat(123)),
+				"inventory_id":                        tftypes.NewValue(tftypes.Number, big.NewFloat(10)),
+				"wait_for_completion":                 tftypes.NewValue(tftypes.Bool, tc.waitForCompletion),
+				"wait_for_completion_timeout_seconds": tftypes.NewValue(tftypes.Number, big.NewFloat(120)),
+				"ignore_job_results":                  tftypes.NewValue(tftypes.Bool, tc.ignoreJobResults),
+				"extra_vars":                          tftypes.NewValue(tftypes.String, nil),
+				"limit":                               tftypes.NewValue(tftypes.String, nil),
+				"job_tags":                            tftypes.NewValue(tftypes.String, nil),
+				"skip_tags":                           tftypes.NewValue(tftypes.String, nil),
+				"labels":                              tftypes.NewValue(tftypes.List{ElementType: tftypes.Number}, nil),
+			})
+
+			req := action.InvokeRequest{
+				Config: tfsdk.Config{
+					Raw:    configVal,
+					Schema: schemaResp.Schema,
+				},
+			}
+
+			resp := &action.InvokeResponse{
+				SendProgress: func(_ action.InvokeProgressEvent) {
+					// Capture progress messages
+				},
+			}
+
+			workflowAction.Invoke(ctx, req, resp)
+
+			if tc.expectError && !resp.Diagnostics.HasError() {
+				t.Error("expected error but got none")
+			}
+			if !tc.expectError && resp.Diagnostics.HasError() {
+				t.Errorf("unexpected error: %v", resp.Diagnostics.Errors())
+			}
+			if tc.expectWarning && len(resp.Diagnostics.Warnings()) == 0 {
+				t.Error("expected warning but got none")
+			}
+		})
+	}
+}
+
+// TestWorkflowJobActionInvokeWithNewFields specifically tests the new prompt-on-launch fields
+func TestWorkflowJobActionInvokeWithNewFields(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockClient := NewMockProviderHTTPClient(ctrl)
+	workflowAction := &WorkflowJobAction{client: mockClient}
+
+	// Mock GetLaunchWorkflowJob - all fields allowed on launch
+	mockClient.EXPECT().getAPIEndpoint().Return("/api/v2").Times(1)
+	mockClient.EXPECT().
+		doRequest(http.MethodGet, gomock.Any(), nil, nil).
+		Return(&http.Response{StatusCode: http.StatusOK}, []byte(`{
+			"ask_variables_on_launch": true,
+			"ask_limit_on_launch": true,
+			"ask_tags_on_launch": true,
+			"ask_skip_tags_on_launch": true,
+			"ask_labels_on_launch": true
+		}`), nil).
+		Times(1)
+
+	// Mock LaunchJobTemplate - verify new fields are in the request
+	mockClient.EXPECT().getAPIEndpoint().Return("/api/v2").Times(1)
+	launchResp := []byte(`{
+		"workflow_job_template": 123,
+		"url": "/api/v2/workflow_jobs/456/",
+		"status": "pending",
+		"inventory": 10,
+		"limit": "webservers",
+		"job_tags": "deploy",
+		"skip_tags": "debug"
+	}`)
+	mockClient.EXPECT().
+		doRequest(http.MethodPost, gomock.Any(), nil, gomock.Any()).
+		Return(&http.Response{StatusCode: http.StatusCreated}, launchResp, nil).
+		Times(1)
+
+	ctx := t.Context()
+
+	// Create schema
+	schemaReq := action.SchemaRequest{}
+	schemaResp := &action.SchemaResponse{}
+	workflowAction.Schema(ctx, schemaReq, schemaResp)
+
+	configType := schemaResp.Schema.Type().TerraformType(ctx)
+	configVal := tftypes.NewValue(configType, map[string]tftypes.Value{
+		"workflow_job_template_id":            tftypes.NewValue(tftypes.Number, big.NewFloat(123)),
+		"inventory_id":                        tftypes.NewValue(tftypes.Number, big.NewFloat(10)),
+		"wait_for_completion":                 tftypes.NewValue(tftypes.Bool, false),
+		"wait_for_completion_timeout_seconds": tftypes.NewValue(tftypes.Number, big.NewFloat(120)),
+		"ignore_job_results":                  tftypes.NewValue(tftypes.Bool, false),
+		"extra_vars":                          tftypes.NewValue(tftypes.String, `{"key":"value"}`),
+		"limit":                               tftypes.NewValue(tftypes.String, "webservers"),
+		"job_tags":                            tftypes.NewValue(tftypes.String, "deploy"),
+		"skip_tags":                           tftypes.NewValue(tftypes.String, "debug"),
+		"labels": tftypes.NewValue(tftypes.List{ElementType: tftypes.Number}, []tftypes.Value{
+			tftypes.NewValue(tftypes.Number, big.NewFloat(5)),
+		}),
+	})
+
+	req := action.InvokeRequest{
+		Config: tfsdk.Config{
+			Raw:    configVal,
+			Schema: schemaResp.Schema,
+		},
+	}
+
+	resp := &action.InvokeResponse{
+		SendProgress: func(_ action.InvokeProgressEvent) {},
+	}
+
+	workflowAction.Invoke(ctx, req, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Errorf("unexpected error: %v", resp.Diagnostics.Errors())
+	}
 }

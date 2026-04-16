@@ -1212,3 +1212,145 @@ func TestAccAAPWorkflowJobDisappears(t *testing.T) {
 		},
 	})
 }
+
+func TestWorkflowJobResourceLaunchAndWait(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name               string
+		waitForCompletion  bool
+		waitTimeout        int64
+		mockLaunchResponse []byte
+		mockJobStatus      string
+		expectError        bool
+	}{
+		{
+			name:              "launch without wait",
+			waitForCompletion: false,
+			mockLaunchResponse: []byte(`{
+				"workflow_job_template": 123,
+				"url": "/api/v2/workflow_jobs/456/",
+				"status": "pending"
+			}`),
+			expectError: false,
+		},
+		{
+			name:              "launch with wait - successful",
+			waitForCompletion: true,
+			waitTimeout:       120,
+			mockLaunchResponse: []byte(`{
+				"workflow_job_template": 123,
+				"url": "/api/v2/workflow_jobs/456/",
+				"status": "pending"
+			}`),
+			mockJobStatus: "successful",
+			expectError:   false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockClient := NewMockProviderHTTPClient(ctrl)
+
+			// Mock GetLaunchWorkflowJob
+			mockClient.EXPECT().getAPIEndpoint().Return("/api/v2").Times(1)
+			mockClient.EXPECT().
+				doRequest(http.MethodGet, gomock.Any(), nil, nil).
+				Return(&http.Response{StatusCode: http.StatusOK}, []byte(`{"ask_variables_on_launch": false}`), nil).
+				Times(1)
+
+			// Mock LaunchJobTemplate
+			mockClient.EXPECT().getAPIEndpoint().Return("/api/v2").Times(1)
+			mockClient.EXPECT().
+				doRequest(http.MethodPost, gomock.Any(), nil, gomock.Any()).
+				Return(&http.Response{StatusCode: http.StatusCreated}, tc.mockLaunchResponse, nil).
+				Times(1)
+
+			// Mock wait-for-completion if enabled
+			if tc.waitForCompletion {
+				mockClient.EXPECT().
+					Get(gomock.Any()).
+					Return([]byte(fmt.Sprintf(`{"status":"%s"}`, tc.mockJobStatus)), nil).
+					Times(1)
+			}
+
+			resource := &WorkflowJobResource{client: mockClient}
+			data := &WorkflowJobResourceModel{
+				WorkflowJobModel: WorkflowJobModel{
+					TemplateID:               types.Int64Value(123),
+					WaitForCompletion:        types.BoolValue(tc.waitForCompletion),
+					WaitForCompletionTimeout: types.Int64Value(tc.waitTimeout),
+				},
+			}
+
+			ctx := t.Context()
+			diags := resource.launchAndWait(ctx, data)
+
+			if tc.expectError && !diags.HasError() {
+				t.Error("expected error but got none")
+			}
+			if !tc.expectError && diags.HasError() {
+				t.Errorf("unexpected error: %v", diags.Errors())
+			}
+		})
+	}
+}
+
+func TestWorkflowJobModelWaitForWorkflowJobCompletion(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name        string
+		timeout     int64
+		mockStatus  string
+		expectError bool
+	}{
+		{
+			name:        "successful completion",
+			timeout:     120,
+			mockStatus:  "successful",
+			expectError: false,
+		},
+		{
+			name:        "failed completion",
+			timeout:     120,
+			mockStatus:  "failed",
+			expectError: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockClient := NewMockProviderHTTPClient(ctrl)
+			mockClient.EXPECT().
+				Get(gomock.Any()).
+				Return([]byte(fmt.Sprintf(`{"status":"%s"}`, tc.mockStatus)), nil).
+				Times(1)
+
+			model := &WorkflowJobModel{
+				WaitForCompletionTimeout: types.Int64Value(tc.timeout),
+			}
+
+			ctx := t.Context()
+			retryProgressFunc := func(_ string) {}
+
+			status, diags := model.WaitForWorkflowJobCompletion(ctx, mockClient, "/api/v2/workflow_jobs/123/", retryProgressFunc)
+
+			if tc.expectError && !diags.HasError() {
+				t.Error("expected error but got none")
+			}
+			if !tc.expectError && diags.HasError() {
+				t.Errorf("unexpected error: %v", diags.Errors())
+			}
+			if !tc.expectError && status != tc.mockStatus {
+				t.Errorf("expected status %q, got %q", tc.mockStatus, status)
+			}
+		})
+	}
+}
