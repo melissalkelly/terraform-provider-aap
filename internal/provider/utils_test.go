@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"testing"
 
+	"github.com/ansible/terraform-provider-aap/internal/provider/customtypes"
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -419,6 +420,151 @@ func TestConvertListToInt64Slice(t *testing.T) {
 			for i, expected := range test.expected {
 				if result[i] != expected {
 					t.Errorf("At index %d: expected %d, but got %d", i, expected, result[i])
+				}
+			}
+		})
+	}
+}
+
+func TestExtractExtraVarsString(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    attr.Value
+		expected string
+	}{
+		{
+			name:     "null value",
+			input:    types.StringNull(),
+			expected: "",
+		},
+		{
+			name:     "unknown value",
+			input:    types.StringUnknown(),
+			expected: "",
+		},
+		{
+			name:     "types.String with value",
+			input:    types.StringValue(`{"key": "value"}`),
+			expected: `{"key": "value"}`,
+		},
+		{
+			name:     "customtypes.AAPCustomStringValue with value",
+			input:    customtypes.NewAAPCustomStringValue(`{"survey_var": "test"}`),
+			expected: `{"survey_var": "test"}`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result := extractExtraVarsString(test.input)
+			if result != test.expected {
+				t.Errorf("Expected %q, but got %q", test.expected, result)
+			}
+		})
+	}
+}
+
+func TestValidateSurveyVariables(t *testing.T) {
+	tests := []struct {
+		name            string
+		requirements    LaunchRequirements
+		extraVarsValue  attr.Value
+		templateType    string
+		expectErrors    int
+		expectWarnings  int
+		errorContains   string
+		warningContains string
+	}{
+		{
+			name: "no variables needed",
+			requirements: LaunchRequirements{
+				VariablesNeededToStart: []string{},
+			},
+			extraVarsValue: types.StringValue(`{}`),
+			templateType:   "Job Template",
+			expectErrors:   0,
+			expectWarnings: 0,
+		},
+		{
+			name: "all required variables provided",
+			requirements: LaunchRequirements{
+				VariablesNeededToStart: []string{"survey_var1", "survey_var2"},
+			},
+			extraVarsValue: types.StringValue(`{"survey_var1": "value1", "survey_var2": "value2"}`),
+			templateType:   "Job Template",
+			expectErrors:   0,
+			expectWarnings: 0,
+		},
+		{
+			name: "missing required variable",
+			requirements: LaunchRequirements{
+				VariablesNeededToStart: []string{"survey_var1", "survey_var2"},
+			},
+			extraVarsValue: types.StringValue(`{"survey_var1": "value1"}`),
+			templateType:   "Job Template",
+			expectErrors:   1,
+			expectWarnings: 0,
+			errorContains:  "survey_var2",
+		},
+		{
+			name: "invalid JSON in extra_vars",
+			requirements: LaunchRequirements{
+				VariablesNeededToStart: []string{"survey_var1"},
+			},
+			extraVarsValue:  types.StringValue(`{invalid json`),
+			templateType:    "Job Template",
+			expectErrors:    0,
+			expectWarnings:  1,
+			warningContains: "Could not parse extra_vars as JSON",
+		},
+		{
+			name: "null extra_vars with required variables",
+			requirements: LaunchRequirements{
+				VariablesNeededToStart: []string{"survey_var1"},
+			},
+			extraVarsValue: types.StringNull(),
+			templateType:   "Job Template",
+			expectErrors:   1,
+			expectWarnings: 0,
+			errorContains:  "survey_var1",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			diags := validateSurveyVariables(test.requirements, test.extraVarsValue, test.templateType)
+
+			if len(diags.Errors()) != test.expectErrors {
+				t.Errorf("Expected %d errors, but got %d: %v", test.expectErrors, len(diags.Errors()), diags.Errors())
+			}
+
+			if len(diags.Warnings()) != test.expectWarnings {
+				t.Errorf("Expected %d warnings, but got %d: %v", test.expectWarnings, len(diags.Warnings()), diags.Warnings())
+			}
+
+			if test.errorContains != "" {
+				found := false
+				for _, err := range diags.Errors() {
+					if regexp.MustCompile(test.errorContains).MatchString(err.Detail()) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("Expected error to contain %q, but got: %v", test.errorContains, diags.Errors())
+				}
+			}
+
+			if test.warningContains != "" {
+				found := false
+				for _, warn := range diags.Warnings() {
+					if regexp.MustCompile(test.warningContains).MatchString(warn.Detail()) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("Expected warning to contain %q, but got: %v", test.warningContains, diags.Warnings())
 				}
 			}
 		})
