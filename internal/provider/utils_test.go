@@ -9,6 +9,7 @@ import (
 	"github.com/ansible/terraform-provider-aap/internal/provider/customtypes"
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
@@ -464,6 +465,39 @@ func TestExtractExtraVarsString(t *testing.T) {
 	}
 }
 
+// assertDiagnosticCount checks that the number of errors and warnings match expectations.
+func assertDiagnosticCount(t *testing.T, diags diag.Diagnostics, expectErrors, expectWarnings int) {
+	t.Helper()
+	if len(diags.Errors()) != expectErrors {
+		t.Errorf("Expected %d errors, but got %d: %v", expectErrors, len(diags.Errors()), diags.Errors())
+	}
+	if len(diags.Warnings()) != expectWarnings {
+		t.Errorf("Expected %d warnings, but got %d: %v", expectWarnings, len(diags.Warnings()), diags.Warnings())
+	}
+}
+
+// assertDiagnosticContains checks that diagnostics contain expected text.
+func assertDiagnosticContains(t *testing.T, diags diag.Diagnostics, errorContains, warningContains string) {
+	t.Helper()
+	if errorContains != "" {
+		assertDiagnosticListContains(t, diags.Errors(), errorContains, "error")
+	}
+	if warningContains != "" {
+		assertDiagnosticListContains(t, diags.Warnings(), warningContains, "warning")
+	}
+}
+
+// assertDiagnosticListContains checks if any diagnostic in the list contains the expected text.
+func assertDiagnosticListContains(t *testing.T, diagList []diag.Diagnostic, expectedText, diagType string) {
+	t.Helper()
+	for _, d := range diagList {
+		if regexp.MustCompile(expectedText).MatchString(d.Detail()) {
+			return
+		}
+	}
+	t.Errorf("Expected %s to contain %q, but got: %v", diagType, expectedText, diagList)
+}
+
 func TestValidateSurveyVariables(t *testing.T) {
 	tests := []struct {
 		name            string
@@ -533,40 +567,8 @@ func TestValidateSurveyVariables(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			diags := validateSurveyVariables(test.requirements, test.extraVarsValue, test.templateType)
-
-			if len(diags.Errors()) != test.expectErrors {
-				t.Errorf("Expected %d errors, but got %d: %v", test.expectErrors, len(diags.Errors()), diags.Errors())
-			}
-
-			if len(diags.Warnings()) != test.expectWarnings {
-				t.Errorf("Expected %d warnings, but got %d: %v", test.expectWarnings, len(diags.Warnings()), diags.Warnings())
-			}
-
-			if test.errorContains != "" {
-				found := false
-				for _, err := range diags.Errors() {
-					if regexp.MustCompile(test.errorContains).MatchString(err.Detail()) {
-						found = true
-						break
-					}
-				}
-				if !found {
-					t.Errorf("Expected error to contain %q, but got: %v", test.errorContains, diags.Errors())
-				}
-			}
-
-			if test.warningContains != "" {
-				found := false
-				for _, warn := range diags.Warnings() {
-					if regexp.MustCompile(test.warningContains).MatchString(warn.Detail()) {
-						found = true
-						break
-					}
-				}
-				if !found {
-					t.Errorf("Expected warning to contain %q, but got: %v", test.warningContains, diags.Warnings())
-				}
-			}
+			assertDiagnosticCount(t, diags, test.expectErrors, test.expectWarnings)
+			assertDiagnosticContains(t, diags, test.errorContains, test.warningContains)
 		})
 	}
 }
