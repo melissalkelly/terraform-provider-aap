@@ -127,6 +127,20 @@ func ConvertListToInt64Slice(list types.List) []int64 {
 	return result
 }
 
+// terraformToAPIFieldName maps Terraform schema field names to AAP API field names.
+var terraformToAPIFieldName = map[string]string{
+	"inventory_id": "inventory",
+	"credentials":  "credential",
+}
+
+// getAPIFieldName converts a Terraform field name to the corresponding AAP API field name.
+func getAPIFieldName(terraformFieldName string) string {
+	if apiName, ok := terraformToAPIFieldName[terraformFieldName]; ok {
+		return apiName
+	}
+	return terraformFieldName
+}
+
 // LaunchFieldValidation represents a single field validation for launch-time parameters.
 type LaunchFieldValidation struct {
 	AskOnLaunch bool
@@ -136,12 +150,15 @@ type LaunchFieldValidation struct {
 
 // ValidateLaunchFields validates that required fields are provided and warns about ignored fields.
 // Used by both Job and WorkflowJob launch validation.
-func ValidateLaunchFields(validations []LaunchFieldValidation, templateType string) diag.Diagnostics {
+func ValidateLaunchFields(variablesNeededToStart []string, validations []LaunchFieldValidation, templateType string) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	for _, v := range validations {
 		isNullOrUnknown := v.Value.IsNull() || v.Value.IsUnknown()
-		if v.AskOnLaunch && isNullOrUnknown {
+		apiFieldName := getAPIFieldName(v.FieldName)
+		isRequired := slices.Contains(variablesNeededToStart, apiFieldName)
+
+		if isRequired && isNullOrUnknown {
 			diags.AddError(
 				"Missing required field",
 				fmt.Sprintf("%s requires '%s' to be provided at launch", templateType, v.FieldName),

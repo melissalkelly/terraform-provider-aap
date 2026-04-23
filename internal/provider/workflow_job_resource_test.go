@@ -535,7 +535,7 @@ func TestWorkflowJobModelCanWorkflowJobBeLaunched(t *testing.T) {
 		// extra_vars
 		{
 			name:         "extra_vars required but not provided",
-			launchConfig: WorkflowJobLaunchAPIModel{AskVariablesOnLaunch: true},
+			launchConfig: WorkflowJobLaunchAPIModel{AskVariablesOnLaunch: true, VariablesNeededToStart: []string{"extra_vars"}},
 			model:        WorkflowJobModel{TemplateID: types.Int64Value(1), ExtraVars: customtypes.NewAAPCustomStringNull()},
 			expectError:  true,
 		},
@@ -548,7 +548,7 @@ func TestWorkflowJobModelCanWorkflowJobBeLaunched(t *testing.T) {
 		// inventory_id
 		{
 			name:         "inventory_id required but not provided",
-			launchConfig: WorkflowJobLaunchAPIModel{AskInventoryOnLaunch: true},
+			launchConfig: WorkflowJobLaunchAPIModel{AskInventoryOnLaunch: true, VariablesNeededToStart: []string{"inventory"}},
 			model:        WorkflowJobModel{TemplateID: types.Int64Value(1), InventoryID: types.Int64Null()},
 			expectError:  true,
 		},
@@ -561,7 +561,7 @@ func TestWorkflowJobModelCanWorkflowJobBeLaunched(t *testing.T) {
 		// limit
 		{
 			name:         "limit required but not provided",
-			launchConfig: WorkflowJobLaunchAPIModel{AskLimitOnLaunch: true},
+			launchConfig: WorkflowJobLaunchAPIModel{AskLimitOnLaunch: true, VariablesNeededToStart: []string{"limit"}},
 			model:        WorkflowJobModel{TemplateID: types.Int64Value(1), Limit: customtypes.NewAAPCustomStringNull()},
 			expectError:  true,
 		},
@@ -574,7 +574,7 @@ func TestWorkflowJobModelCanWorkflowJobBeLaunched(t *testing.T) {
 		// job_tags
 		{
 			name:         "job_tags required but not provided",
-			launchConfig: WorkflowJobLaunchAPIModel{AskTagsOnLaunch: true},
+			launchConfig: WorkflowJobLaunchAPIModel{AskTagsOnLaunch: true, VariablesNeededToStart: []string{"job_tags"}},
 			model:        WorkflowJobModel{TemplateID: types.Int64Value(1), JobTags: customtypes.NewAAPCustomStringNull()},
 			expectError:  true,
 		},
@@ -587,7 +587,7 @@ func TestWorkflowJobModelCanWorkflowJobBeLaunched(t *testing.T) {
 		// skip_tags
 		{
 			name:         "skip_tags required but not provided",
-			launchConfig: WorkflowJobLaunchAPIModel{AskSkipTagsOnLaunch: true},
+			launchConfig: WorkflowJobLaunchAPIModel{AskSkipTagsOnLaunch: true, VariablesNeededToStart: []string{"skip_tags"}},
 			model:        WorkflowJobModel{TemplateID: types.Int64Value(1), SkipTags: customtypes.NewAAPCustomStringNull()},
 			expectError:  true,
 		},
@@ -600,7 +600,7 @@ func TestWorkflowJobModelCanWorkflowJobBeLaunched(t *testing.T) {
 		// labels
 		{
 			name:         "labels required but not provided",
-			launchConfig: WorkflowJobLaunchAPIModel{AskLabelsOnLaunch: true},
+			launchConfig: WorkflowJobLaunchAPIModel{AskLabelsOnLaunch: true, VariablesNeededToStart: []string{"labels"}},
 			model:        WorkflowJobModel{TemplateID: types.Int64Value(1), Labels: types.ListNull(types.Int64Type)},
 			expectError:  true,
 		},
@@ -614,10 +614,11 @@ func TestWorkflowJobModelCanWorkflowJobBeLaunched(t *testing.T) {
 		{
 			name: "all required fields provided - no errors",
 			launchConfig: WorkflowJobLaunchAPIModel{
-				AskVariablesOnLaunch: true,
-				AskLimitOnLaunch:     true,
-				AskInventoryOnLaunch: true,
-				AskLabelsOnLaunch:    true,
+				AskVariablesOnLaunch:   true,
+				AskLimitOnLaunch:       true,
+				AskInventoryOnLaunch:   true,
+				AskLabelsOnLaunch:      true,
+				VariablesNeededToStart: []string{"extra_vars", "limit", "inventory", "labels"},
 			},
 			model: WorkflowJobModel{
 				TemplateID:  types.Int64Value(1),
@@ -691,7 +692,8 @@ func TestWorkflowJobModelLaunchWorkflowJob(t *testing.T) {
 				ExtraVars:  customtypes.NewAAPCustomStringNull(),
 			},
 			launchConfig: WorkflowJobLaunchAPIModel{
-				AskVariablesOnLaunch: true, // extra_vars required but not provided
+				AskVariablesOnLaunch:   true,
+				VariablesNeededToStart: []string{"extra_vars"}, // extra_vars required but not provided
 			},
 			expectError:  true,
 			skipPostMock: true,
@@ -1118,12 +1120,12 @@ func TestAccAAPWorkflowJob_AllFieldsOnPrompt(t *testing.T) {
 	})
 }
 
-// TestAccAAPWorkflowJob_AllFieldsOnPrompt_MissingRequired tests that a workflow job resource with all
-// fields on prompt fails when required fields are not provided.
+// TestAccAAPWorkflowJob_AllFieldsOnPrompt_MissingRequired tests that a workflow job resource with
+// required survey fields fails when required fields are not provided.
 func TestAccAAPWorkflowJob_AllFieldsOnPrompt_MissingRequired(t *testing.T) {
-	workflowJobTemplateID := os.Getenv("AAP_TEST_WORKFLOW_JOB_TEMPLATE_ALL_FIELDS_PROMPT_ID")
+	workflowJobTemplateID := os.Getenv("AAP_TEST_WORKFLOW_JOB_TEMPLATE_WITH_SURVEY_ID")
 	if workflowJobTemplateID == "" {
-		t.Skip("AAP_TEST_WORKFLOW_JOB_TEMPLATE_ALL_FIELDS_PROMPT_ID environment variable not set")
+		t.Skip("AAP_TEST_WORKFLOW_JOB_TEMPLATE_WITH_SURVEY_ID environment variable not set")
 	}
 
 	resource.Test(t, resource.TestCase{

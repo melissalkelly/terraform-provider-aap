@@ -862,12 +862,12 @@ func TestAccAAPJob_AllFieldsOnPrompt(t *testing.T) {
 	})
 }
 
-// TestAccAAPJob_AllFieldsOnPrompt_MissingRequired tests that a job resource with all
-// fields on prompt fails when required fields are not provided.
+// TestAccAAPJob_AllFieldsOnPrompt_MissingRequired tests that a job resource with
+// required survey fields fails when required fields are not provided.
 func TestAccAAPJob_AllFieldsOnPrompt_MissingRequired(t *testing.T) {
-	jobTemplateID := os.Getenv("AAP_TEST_JOB_TEMPLATE_ALL_FIELDS_PROMPT_ID")
+	jobTemplateID := os.Getenv("AAP_TEST_JOB_TEMPLATE_WITH_SURVEY_ID")
 	if jobTemplateID == "" {
-		t.Skip("AAP_TEST_JOB_TEMPLATE_ALL_FIELDS_PROMPT_ID environment variable not set")
+		t.Skip("AAP_TEST_JOB_TEMPLATE_WITH_SURVEY_ID environment variable not set")
 	}
 
 	resource.Test(t, resource.TestCase{
@@ -1160,7 +1160,7 @@ func TestJobModelCanJobBeLaunched(t *testing.T) {
 		// extra_vars
 		{
 			name:         "extra_vars required but not provided",
-			launchConfig: JobLaunchAPIModel{AskVariablesOnLaunch: true},
+			launchConfig: JobLaunchAPIModel{AskVariablesOnLaunch: true, VariablesNeededToStart: []string{"extra_vars"}},
 			model:        JobModel{TemplateID: types.Int64Value(1), ExtraVars: customtypes.NewAAPCustomStringNull()},
 			expectError:  true,
 		},
@@ -1173,7 +1173,7 @@ func TestJobModelCanJobBeLaunched(t *testing.T) {
 		// inventory_id
 		{
 			name:         "inventory_id required but not provided",
-			launchConfig: JobLaunchAPIModel{AskInventoryOnLaunch: true},
+			launchConfig: JobLaunchAPIModel{AskInventoryOnLaunch: true, VariablesNeededToStart: []string{"inventory"}},
 			model:        JobModel{TemplateID: types.Int64Value(1), InventoryID: types.Int64Null()},
 			expectError:  true,
 		},
@@ -1186,7 +1186,7 @@ func TestJobModelCanJobBeLaunched(t *testing.T) {
 		// limit
 		{
 			name:         "limit required but not provided",
-			launchConfig: JobLaunchAPIModel{AskLimitOnLaunch: true},
+			launchConfig: JobLaunchAPIModel{AskLimitOnLaunch: true, VariablesNeededToStart: []string{"limit"}},
 			model:        JobModel{TemplateID: types.Int64Value(1), Limit: customtypes.NewAAPCustomStringNull()},
 			expectError:  true,
 		},
@@ -1199,7 +1199,7 @@ func TestJobModelCanJobBeLaunched(t *testing.T) {
 		// job_tags
 		{
 			name:         "job_tags required but not provided",
-			launchConfig: JobLaunchAPIModel{AskTagsOnLaunch: true},
+			launchConfig: JobLaunchAPIModel{AskTagsOnLaunch: true, VariablesNeededToStart: []string{"job_tags"}},
 			model:        JobModel{TemplateID: types.Int64Value(1), JobTags: customtypes.NewAAPCustomStringNull()},
 			expectError:  true,
 		},
@@ -1212,7 +1212,7 @@ func TestJobModelCanJobBeLaunched(t *testing.T) {
 		// skip_tags
 		{
 			name:         "skip_tags required but not provided",
-			launchConfig: JobLaunchAPIModel{AskSkipTagsOnLaunch: true},
+			launchConfig: JobLaunchAPIModel{AskSkipTagsOnLaunch: true, VariablesNeededToStart: []string{"skip_tags"}},
 			model:        JobModel{TemplateID: types.Int64Value(1), SkipTags: customtypes.NewAAPCustomStringNull()},
 			expectError:  true,
 		},
@@ -1225,7 +1225,7 @@ func TestJobModelCanJobBeLaunched(t *testing.T) {
 		// diff_mode
 		{
 			name:         "diff_mode required but not provided",
-			launchConfig: JobLaunchAPIModel{AskDiffModeOnLaunch: true},
+			launchConfig: JobLaunchAPIModel{AskDiffModeOnLaunch: true, VariablesNeededToStart: []string{"diff_mode"}},
 			model:        JobModel{TemplateID: types.Int64Value(1), DiffMode: types.BoolNull()},
 			expectError:  true,
 		},
@@ -1238,7 +1238,7 @@ func TestJobModelCanJobBeLaunched(t *testing.T) {
 		// verbosity
 		{
 			name:         "verbosity required but not provided",
-			launchConfig: JobLaunchAPIModel{AskVerbosityOnLaunch: true},
+			launchConfig: JobLaunchAPIModel{AskVerbosityOnLaunch: true, VariablesNeededToStart: []string{"verbosity"}},
 			model:        JobModel{TemplateID: types.Int64Value(1), Verbosity: types.Int64Null()},
 			expectError:  true,
 		},
@@ -1251,7 +1251,7 @@ func TestJobModelCanJobBeLaunched(t *testing.T) {
 		// forks
 		{
 			name:         "forks required but not provided",
-			launchConfig: JobLaunchAPIModel{AskForksOnLaunch: true},
+			launchConfig: JobLaunchAPIModel{AskForksOnLaunch: true, VariablesNeededToStart: []string{"forks"}},
 			model:        JobModel{TemplateID: types.Int64Value(1), Forks: types.Int64Null()},
 			expectError:  true,
 		},
@@ -1264,7 +1264,7 @@ func TestJobModelCanJobBeLaunched(t *testing.T) {
 		// timeout
 		{
 			name:         "timeout required but not provided",
-			launchConfig: JobLaunchAPIModel{AskTimeoutOnLaunch: true},
+			launchConfig: JobLaunchAPIModel{AskTimeoutOnLaunch: true, VariablesNeededToStart: []string{"timeout"}},
 			model:        JobModel{TemplateID: types.Int64Value(1), Timeout: types.Int64Null()},
 			expectError:  true,
 		},
@@ -1277,7 +1277,7 @@ func TestJobModelCanJobBeLaunched(t *testing.T) {
 		// job_slice_count
 		{
 			name:         "job_slice_count required but not provided",
-			launchConfig: JobLaunchAPIModel{AskJobSliceCountOnLaunch: true},
+			launchConfig: JobLaunchAPIModel{AskJobSliceCountOnLaunch: true, VariablesNeededToStart: []string{"job_slice_count"}},
 			model:        JobModel{TemplateID: types.Int64Value(1), JobSliceCount: types.Int64Null()},
 			expectError:  true,
 		},
@@ -1290,7 +1290,7 @@ func TestJobModelCanJobBeLaunched(t *testing.T) {
 		// execution_environment
 		{
 			name:         "execution_environment required but not provided",
-			launchConfig: JobLaunchAPIModel{AskExecutionEnvironmentOnLaunch: true},
+			launchConfig: JobLaunchAPIModel{AskExecutionEnvironmentOnLaunch: true, VariablesNeededToStart: []string{"execution_environment"}},
 			model:        JobModel{TemplateID: types.Int64Value(1), ExecutionEnvironmentID: types.Int64Null()},
 			expectError:  true,
 		},
@@ -1303,7 +1303,7 @@ func TestJobModelCanJobBeLaunched(t *testing.T) {
 		// instance_groups
 		{
 			name:         "instance_groups required but not provided",
-			launchConfig: JobLaunchAPIModel{AskInstanceGroupsOnLaunch: true},
+			launchConfig: JobLaunchAPIModel{AskInstanceGroupsOnLaunch: true, VariablesNeededToStart: []string{"instance_groups"}},
 			model:        JobModel{TemplateID: types.Int64Value(1), InstanceGroups: types.ListNull(types.Int64Type)},
 			expectError:  true,
 		},
@@ -1316,7 +1316,7 @@ func TestJobModelCanJobBeLaunched(t *testing.T) {
 		// credentials
 		{
 			name:         "credentials required but not provided",
-			launchConfig: JobLaunchAPIModel{AskCredentialOnLaunch: true},
+			launchConfig: JobLaunchAPIModel{AskCredentialOnLaunch: true, VariablesNeededToStart: []string{"credential"}},
 			model:        JobModel{TemplateID: types.Int64Value(1), Credentials: types.ListNull(types.Int64Type)},
 			expectError:  true,
 		},
@@ -1329,7 +1329,7 @@ func TestJobModelCanJobBeLaunched(t *testing.T) {
 		// labels
 		{
 			name:         "labels required but not provided",
-			launchConfig: JobLaunchAPIModel{AskLabelsOnLaunch: true},
+			launchConfig: JobLaunchAPIModel{AskLabelsOnLaunch: true, VariablesNeededToStart: []string{"labels"}},
 			model:        JobModel{TemplateID: types.Int64Value(1), Labels: types.ListNull(types.Int64Type)},
 			expectError:  true,
 		},
@@ -1348,6 +1348,7 @@ func TestJobModelCanJobBeLaunched(t *testing.T) {
 				AskInventoryOnLaunch:      true,
 				AskVerbosityOnLaunch:      true,
 				AskInstanceGroupsOnLaunch: true,
+				VariablesNeededToStart:    []string{"extra_vars", "limit", "inventory", "verbosity", "instance_groups"},
 			},
 			model: JobModel{
 				TemplateID:     types.Int64Value(1),
@@ -1422,7 +1423,8 @@ func TestJobModelLaunchJob(t *testing.T) {
 				ExtraVars:  customtypes.NewAAPCustomStringNull(),
 			},
 			launchConfig: JobLaunchAPIModel{
-				AskVariablesOnLaunch: true, // extra_vars required but not provided
+				AskVariablesOnLaunch:   true,
+				VariablesNeededToStart: []string{"extra_vars"}, // extra_vars required but not provided
 			},
 			expectError:  true,
 			skipPostMock: true,

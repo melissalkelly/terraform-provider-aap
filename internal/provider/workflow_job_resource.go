@@ -383,7 +383,7 @@ func (r *WorkflowJobModel) CanWorkflowJobBeLaunched(client ProviderHTTPClient) (
 		{launchConfig.AskLabelsOnLaunch, r.Labels, "labels"},
 	}
 
-	diags.Append(ValidateLaunchFields(validations, "Workflow Job Template")...)
+	diags.Append(ValidateLaunchFields(launchConfig.VariablesNeededToStart, validations, "Workflow Job Template")...)
 	return diags
 }
 
