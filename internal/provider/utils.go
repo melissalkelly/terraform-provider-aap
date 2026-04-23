@@ -148,15 +148,28 @@ type LaunchFieldValidation struct {
 	FieldName   string
 }
 
+// LaunchRequirements contains fields from AAP's /launch/ endpoint that indicate what's required.
+type LaunchRequirements struct {
+	VariablesNeededToStart  []string
+	InventoryNeededToStart  bool
+	CredentialNeededToStart bool
+}
+
 // ValidateLaunchFields validates that required fields are provided and warns about ignored fields.
 // Used by both Job and WorkflowJob launch validation.
-func ValidateLaunchFields(variablesNeededToStart []string, validations []LaunchFieldValidation, templateType string) diag.Diagnostics {
+func ValidateLaunchFields(requirements LaunchRequirements, validations []LaunchFieldValidation, templateType string, extraVarsValue attr.Value) diag.Diagnostics {
 	var diags diag.Diagnostics
 
+	// Validate template fields using explicit boolean flags
 	for _, v := range validations {
 		isNullOrUnknown := v.Value.IsNull() || v.Value.IsUnknown()
-		apiFieldName := getAPIFieldName(v.FieldName)
-		isRequired := slices.Contains(variablesNeededToStart, apiFieldName)
+
+		isRequired := false
+		if v.FieldName == "inventory_id" && requirements.InventoryNeededToStart {
+			isRequired = true
+		} else if v.FieldName == "credentials" && requirements.CredentialNeededToStart {
+			isRequired = true
+		}
 
 		if isRequired && isNullOrUnknown {
 			diags.AddError(
@@ -164,11 +177,56 @@ func ValidateLaunchFields(variablesNeededToStart []string, validations []LaunchF
 				fmt.Sprintf("%s requires '%s' to be provided at launch", templateType, v.FieldName),
 			)
 		}
+
 		if !v.AskOnLaunch && !isNullOrUnknown {
 			diags.AddWarning(
 				"Field will be ignored",
 				fmt.Sprintf("'%s' is provided but the %s does not allow it to be specified at launch", v.FieldName, templateType),
 			)
+		}
+	}
+
+	// Validate survey variables (variables_needed_to_start contains required survey variable names)
+	if len(requirements.VariablesNeededToStart) > 0 {
+		// Parse extra_vars JSON to check if required survey variables are provided
+		var extraVarsMap map[string]interface{}
+		extraVarsStr := ""
+
+		// Extract extra_vars string value
+		if !extraVarsValue.IsNull() && !extraVarsValue.IsUnknown() {
+			// Try to get string value from different possible types
+			switch v := extraVarsValue.(type) {
+			case types.String:
+				extraVarsStr = v.ValueString()
+			default:
+				// For customtypes.AAPCustomStringValue and other types with ValueString method
+				if stringer, ok := extraVarsValue.(interface{ ValueString() string }); ok {
+					extraVarsStr = stringer.ValueString()
+				}
+			}
+		}
+
+		// Parse extra_vars if provided
+		if extraVarsStr != "" {
+			if err := json.Unmarshal([]byte(extraVarsStr), &extraVarsMap); err != nil {
+				// If we can't parse extra_vars, we can't validate survey variables
+				diags.AddWarning(
+					"Unable to validate required survey variables",
+					fmt.Sprintf("Could not parse extra_vars as JSON: %s. Survey variable validation will be performed by AAP.", err.Error()),
+				)
+				extraVarsMap = nil
+			}
+		}
+
+		// Check each required survey variable
+		for _, varName := range requirements.VariablesNeededToStart {
+			_, exists := extraVarsMap[varName]
+			if !exists {
+				diags.AddError(
+					"Missing required field",
+					fmt.Sprintf("%s requires survey variable '%s' to be provided in extra_vars", templateType, varName),
+				)
+			}
 		}
 	}
 

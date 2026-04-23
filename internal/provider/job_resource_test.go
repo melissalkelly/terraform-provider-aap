@@ -1339,16 +1339,17 @@ func TestJobModelCanJobBeLaunched(t *testing.T) {
 			model:          JobModel{TemplateID: types.Int64Value(1), Labels: basetypes.NewListValueMust(types.Int64Type, []attr.Value{types.Int64Value(1)})},
 			expectWarnings: true,
 		},
-		// Combined success case
+		// Template fields can be provided when allowed
 		{
-			name: "all required fields provided - no errors",
+			name: "template fields allowed and provided - no errors",
 			launchConfig: JobLaunchAPIModel{
 				AskVariablesOnLaunch:      true,
 				AskLimitOnLaunch:          true,
 				AskInventoryOnLaunch:      true,
 				AskVerbosityOnLaunch:      true,
 				AskInstanceGroupsOnLaunch: true,
-				VariablesNeededToStart:    []string{"extra_vars", "limit", "inventory", "verbosity", "instance_groups"},
+				InventoryNeededToStart:    false,
+				CredentialNeededToStart:   false,
 			},
 			model: JobModel{
 				TemplateID:     types.Int64Value(1),

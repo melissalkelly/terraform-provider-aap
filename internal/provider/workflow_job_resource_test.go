@@ -612,13 +612,14 @@ func TestWorkflowJobModelCanWorkflowJobBeLaunched(t *testing.T) {
 		},
 		// Combined success case
 		{
-			name: "all required fields provided - no errors",
+			name: "template fields allowed and provided - no errors",
 			launchConfig: WorkflowJobLaunchAPIModel{
-				AskVariablesOnLaunch:   true,
-				AskLimitOnLaunch:       true,
-				AskInventoryOnLaunch:   true,
-				AskLabelsOnLaunch:      true,
-				VariablesNeededToStart: []string{"extra_vars", "limit", "inventory", "labels"},
+				AskVariablesOnLaunch:    true,
+				AskLimitOnLaunch:        true,
+				AskInventoryOnLaunch:    true,
+				AskLabelsOnLaunch:       true,
+				InventoryNeededToStart:  false,
+				CredentialNeededToStart: false,
 			},
 			model: WorkflowJobModel{
 				TemplateID:  types.Int64Value(1),

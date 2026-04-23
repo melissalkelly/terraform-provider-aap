@@ -73,6 +73,8 @@ type JobLaunchAPIModel struct {
 	AskJobSliceCountOnLaunch        bool     `json:"ask_job_slice_count_on_launch"`
 	SurveyEnabled                   bool     `json:"survey_enabled"`
 	VariablesNeededToStart          []string `json:"variables_needed_to_start"`
+	InventoryNeededToStart          bool     `json:"inventory_needed_to_start"`
+	CredentialNeededToStart         bool     `json:"credential_needed_to_start"`
 }
 
 // JobLaunchRequestModel represents the request body for POST /job_templates/{id}/launch.
@@ -567,7 +569,13 @@ func (r *JobModel) CanJobBeLaunched(client ProviderHTTPClient) (diags diag.Diagn
 		{launchConfig.AskJobSliceCountOnLaunch, r.JobSliceCount, "job_slice_count"},
 	}
 
-	diags.Append(ValidateLaunchFields(launchConfig.VariablesNeededToStart, validations, "Job Template")...)
+	requirements := LaunchRequirements{
+		VariablesNeededToStart:  launchConfig.VariablesNeededToStart,
+		InventoryNeededToStart:  launchConfig.InventoryNeededToStart,
+		CredentialNeededToStart: launchConfig.CredentialNeededToStart,
+	}
+
+	diags.Append(ValidateLaunchFields(requirements, validations, "Job Template", r.ExtraVars)...)
 
 	return diags
 }
