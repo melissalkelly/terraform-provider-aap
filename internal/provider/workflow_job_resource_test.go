@@ -532,11 +532,25 @@ func TestWorkflowJobModelCanWorkflowJobBeLaunched(t *testing.T) {
 			model:        WorkflowJobModel{TemplateID: types.Int64Value(1)},
 			expectError:  false,
 		},
-		// extra_vars
+		// Regression test for bug fix: ask_on_launch=true does NOT mean field is required
 		{
-			name:         "extra_vars required but not provided",
-			launchConfig: WorkflowJobLaunchAPIModel{AskVariablesOnLaunch: true, VariablesNeededToStart: []string{"extra_vars"}},
-			model:        WorkflowJobModel{TemplateID: types.Int64Value(1), ExtraVars: customtypes.NewAAPCustomStringNull()},
+			name: "ask_on_launch true but field not required - no error",
+			launchConfig: WorkflowJobLaunchAPIModel{
+				AskInventoryOnLaunch:    true,  // Field CAN be provided
+				InventoryNeededToStart:  false, // But it's NOT required
+				CredentialNeededToStart: false,
+			},
+			model: WorkflowJobModel{
+				TemplateID:  types.Int64Value(1),
+				InventoryID: types.Int64Null(), // Not provided - should be OK
+			},
+			expectError: false, // This is the bug fix - old code would error here
+		},
+		// Survey variables (in extra_vars)
+		{
+			name:         "survey variable required but not provided in extra_vars",
+			launchConfig: WorkflowJobLaunchAPIModel{AskVariablesOnLaunch: true, VariablesNeededToStart: []string{"my_survey_var"}},
+			model:        WorkflowJobModel{TemplateID: types.Int64Value(1), ExtraVars: customtypes.NewAAPCustomStringValue(`{}`)},
 			expectError:  true,
 		},
 		{
@@ -548,7 +562,7 @@ func TestWorkflowJobModelCanWorkflowJobBeLaunched(t *testing.T) {
 		// inventory_id
 		{
 			name:         "inventory_id required but not provided",
-			launchConfig: WorkflowJobLaunchAPIModel{AskInventoryOnLaunch: true, VariablesNeededToStart: []string{"inventory"}},
+			launchConfig: WorkflowJobLaunchAPIModel{AskInventoryOnLaunch: true, InventoryNeededToStart: true},
 			model:        WorkflowJobModel{TemplateID: types.Int64Value(1), InventoryID: types.Int64Null()},
 			expectError:  true,
 		},
@@ -558,52 +572,28 @@ func TestWorkflowJobModelCanWorkflowJobBeLaunched(t *testing.T) {
 			model:          WorkflowJobModel{TemplateID: types.Int64Value(1), InventoryID: types.Int64Value(10)},
 			expectWarnings: true,
 		},
-		// limit
-		{
-			name:         "limit required but not provided",
-			launchConfig: WorkflowJobLaunchAPIModel{AskLimitOnLaunch: true, VariablesNeededToStart: []string{"limit"}},
-			model:        WorkflowJobModel{TemplateID: types.Int64Value(1), Limit: customtypes.NewAAPCustomStringNull()},
-			expectError:  true,
-		},
+		// limit (can only be optional at template level, never required)
 		{
 			name:           "limit provided but not expected - warning",
 			launchConfig:   WorkflowJobLaunchAPIModel{AskLimitOnLaunch: false},
 			model:          WorkflowJobModel{TemplateID: types.Int64Value(1), Limit: customtypes.NewAAPCustomStringValue("all")},
 			expectWarnings: true,
 		},
-		// job_tags
-		{
-			name:         "job_tags required but not provided",
-			launchConfig: WorkflowJobLaunchAPIModel{AskTagsOnLaunch: true, VariablesNeededToStart: []string{"job_tags"}},
-			model:        WorkflowJobModel{TemplateID: types.Int64Value(1), JobTags: customtypes.NewAAPCustomStringNull()},
-			expectError:  true,
-		},
+		// job_tags (can only be optional at template level, never required)
 		{
 			name:           "job_tags provided but not expected - warning",
 			launchConfig:   WorkflowJobLaunchAPIModel{AskTagsOnLaunch: false},
 			model:          WorkflowJobModel{TemplateID: types.Int64Value(1), JobTags: customtypes.NewAAPCustomStringValue("deploy")},
 			expectWarnings: true,
 		},
-		// skip_tags
-		{
-			name:         "skip_tags required but not provided",
-			launchConfig: WorkflowJobLaunchAPIModel{AskSkipTagsOnLaunch: true, VariablesNeededToStart: []string{"skip_tags"}},
-			model:        WorkflowJobModel{TemplateID: types.Int64Value(1), SkipTags: customtypes.NewAAPCustomStringNull()},
-			expectError:  true,
-		},
+		// skip_tags (can only be optional at template level, never required)
 		{
 			name:           "skip_tags provided but not expected - warning",
 			launchConfig:   WorkflowJobLaunchAPIModel{AskSkipTagsOnLaunch: false},
 			model:          WorkflowJobModel{TemplateID: types.Int64Value(1), SkipTags: customtypes.NewAAPCustomStringValue("debug")},
 			expectWarnings: true,
 		},
-		// labels
-		{
-			name:         "labels required but not provided",
-			launchConfig: WorkflowJobLaunchAPIModel{AskLabelsOnLaunch: true, VariablesNeededToStart: []string{"labels"}},
-			model:        WorkflowJobModel{TemplateID: types.Int64Value(1), Labels: types.ListNull(types.Int64Type)},
-			expectError:  true,
-		},
+		// labels (can only be optional at template level, never required)
 		{
 			name:           "labels provided but not expected - warning",
 			launchConfig:   WorkflowJobLaunchAPIModel{AskLabelsOnLaunch: false},

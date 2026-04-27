@@ -1157,11 +1157,26 @@ func TestJobModelCanJobBeLaunched(t *testing.T) {
 			model:        JobModel{TemplateID: types.Int64Value(1)},
 			expectError:  false,
 		},
-		// extra_vars
+		// ask_on_launch=true does NOT mean field is required
 		{
-			name:         "extra_vars required but not provided",
-			launchConfig: JobLaunchAPIModel{AskVariablesOnLaunch: true, VariablesNeededToStart: []string{"extra_vars"}},
-			model:        JobModel{TemplateID: types.Int64Value(1), ExtraVars: customtypes.NewAAPCustomStringNull()},
+			name: "ask_on_launch true but field not required - no error",
+			launchConfig: JobLaunchAPIModel{
+				AskInventoryOnLaunch:    true,
+				InventoryNeededToStart:  false,
+				CredentialNeededToStart: false,
+			},
+			model: JobModel{
+				TemplateID:  types.Int64Value(1),
+				InventoryID: types.Int64Null(),
+				Credentials: types.ListNull(types.Int64Type),
+			},
+			expectError: false,
+		},
+		// Survey variables (in extra_vars)
+		{
+			name:         "survey variable required but not provided in extra_vars",
+			launchConfig: JobLaunchAPIModel{AskVariablesOnLaunch: true, VariablesNeededToStart: []string{"my_survey_var"}},
+			model:        JobModel{TemplateID: types.Int64Value(1), ExtraVars: customtypes.NewAAPCustomStringValue(`{}`)},
 			expectError:  true,
 		},
 		{
@@ -1173,7 +1188,7 @@ func TestJobModelCanJobBeLaunched(t *testing.T) {
 		// inventory_id
 		{
 			name:         "inventory_id required but not provided",
-			launchConfig: JobLaunchAPIModel{AskInventoryOnLaunch: true, VariablesNeededToStart: []string{"inventory"}},
+			launchConfig: JobLaunchAPIModel{AskInventoryOnLaunch: true, InventoryNeededToStart: true},
 			model:        JobModel{TemplateID: types.Int64Value(1), InventoryID: types.Int64Null()},
 			expectError:  true,
 		},
@@ -1183,140 +1198,38 @@ func TestJobModelCanJobBeLaunched(t *testing.T) {
 			model:          JobModel{TemplateID: types.Int64Value(1), InventoryID: types.Int64Value(10)},
 			expectWarnings: true,
 		},
-		// limit
-		{
-			name:         "limit required but not provided",
-			launchConfig: JobLaunchAPIModel{AskLimitOnLaunch: true, VariablesNeededToStart: []string{"limit"}},
-			model:        JobModel{TemplateID: types.Int64Value(1), Limit: customtypes.NewAAPCustomStringNull()},
-			expectError:  true,
-		},
+		// limit (can only be optional at template level, never required)
 		{
 			name:           "limit provided but not expected - warning",
 			launchConfig:   JobLaunchAPIModel{AskLimitOnLaunch: false},
 			model:          JobModel{TemplateID: types.Int64Value(1), Limit: customtypes.NewAAPCustomStringValue("all")},
 			expectWarnings: true,
 		},
-		// job_tags
-		{
-			name:         "job_tags required but not provided",
-			launchConfig: JobLaunchAPIModel{AskTagsOnLaunch: true, VariablesNeededToStart: []string{"job_tags"}},
-			model:        JobModel{TemplateID: types.Int64Value(1), JobTags: customtypes.NewAAPCustomStringNull()},
-			expectError:  true,
-		},
+		// job_tags (can only be optional at template level, never required)
 		{
 			name:           "job_tags provided but not expected - warning",
 			launchConfig:   JobLaunchAPIModel{AskTagsOnLaunch: false},
 			model:          JobModel{TemplateID: types.Int64Value(1), JobTags: customtypes.NewAAPCustomStringValue("deploy")},
 			expectWarnings: true,
 		},
-		// skip_tags
-		{
-			name:         "skip_tags required but not provided",
-			launchConfig: JobLaunchAPIModel{AskSkipTagsOnLaunch: true, VariablesNeededToStart: []string{"skip_tags"}},
-			model:        JobModel{TemplateID: types.Int64Value(1), SkipTags: customtypes.NewAAPCustomStringNull()},
-			expectError:  true,
-		},
+		// skip_tags (can only be optional at template level, never required)
 		{
 			name:           "skip_tags provided but not expected - warning",
 			launchConfig:   JobLaunchAPIModel{AskSkipTagsOnLaunch: false},
 			model:          JobModel{TemplateID: types.Int64Value(1), SkipTags: customtypes.NewAAPCustomStringValue("debug")},
 			expectWarnings: true,
 		},
-		// diff_mode
-		{
-			name:         "diff_mode required but not provided",
-			launchConfig: JobLaunchAPIModel{AskDiffModeOnLaunch: true, VariablesNeededToStart: []string{"diff_mode"}},
-			model:        JobModel{TemplateID: types.Int64Value(1), DiffMode: types.BoolNull()},
-			expectError:  true,
-		},
+		// diff_mode (can only be optional at template level, never required)
 		{
 			name:           "diff_mode provided but not expected - warning",
 			launchConfig:   JobLaunchAPIModel{AskDiffModeOnLaunch: false},
 			model:          JobModel{TemplateID: types.Int64Value(1), DiffMode: types.BoolValue(true)},
 			expectWarnings: true,
 		},
-		// verbosity
-		{
-			name:         "verbosity required but not provided",
-			launchConfig: JobLaunchAPIModel{AskVerbosityOnLaunch: true, VariablesNeededToStart: []string{"verbosity"}},
-			model:        JobModel{TemplateID: types.Int64Value(1), Verbosity: types.Int64Null()},
-			expectError:  true,
-		},
-		{
-			name:           "verbosity provided but not expected - warning",
-			launchConfig:   JobLaunchAPIModel{AskVerbosityOnLaunch: false},
-			model:          JobModel{TemplateID: types.Int64Value(1), Verbosity: types.Int64Value(3)},
-			expectWarnings: true,
-		},
-		// forks
-		{
-			name:         "forks required but not provided",
-			launchConfig: JobLaunchAPIModel{AskForksOnLaunch: true, VariablesNeededToStart: []string{"forks"}},
-			model:        JobModel{TemplateID: types.Int64Value(1), Forks: types.Int64Null()},
-			expectError:  true,
-		},
-		{
-			name:           "forks provided but not expected - warning",
-			launchConfig:   JobLaunchAPIModel{AskForksOnLaunch: false},
-			model:          JobModel{TemplateID: types.Int64Value(1), Forks: types.Int64Value(10)},
-			expectWarnings: true,
-		},
-		// timeout
-		{
-			name:         "timeout required but not provided",
-			launchConfig: JobLaunchAPIModel{AskTimeoutOnLaunch: true, VariablesNeededToStart: []string{"timeout"}},
-			model:        JobModel{TemplateID: types.Int64Value(1), Timeout: types.Int64Null()},
-			expectError:  true,
-		},
-		{
-			name:           "timeout provided but not expected - warning",
-			launchConfig:   JobLaunchAPIModel{AskTimeoutOnLaunch: false},
-			model:          JobModel{TemplateID: types.Int64Value(1), Timeout: types.Int64Value(3600)},
-			expectWarnings: true,
-		},
-		// job_slice_count
-		{
-			name:         "job_slice_count required but not provided",
-			launchConfig: JobLaunchAPIModel{AskJobSliceCountOnLaunch: true, VariablesNeededToStart: []string{"job_slice_count"}},
-			model:        JobModel{TemplateID: types.Int64Value(1), JobSliceCount: types.Int64Null()},
-			expectError:  true,
-		},
-		{
-			name:           "job_slice_count provided but not expected - warning",
-			launchConfig:   JobLaunchAPIModel{AskJobSliceCountOnLaunch: false},
-			model:          JobModel{TemplateID: types.Int64Value(1), JobSliceCount: types.Int64Value(4)},
-			expectWarnings: true,
-		},
-		// execution_environment
-		{
-			name:         "execution_environment required but not provided",
-			launchConfig: JobLaunchAPIModel{AskExecutionEnvironmentOnLaunch: true, VariablesNeededToStart: []string{"execution_environment"}},
-			model:        JobModel{TemplateID: types.Int64Value(1), ExecutionEnvironmentID: types.Int64Null()},
-			expectError:  true,
-		},
-		{
-			name:           "execution_environment provided but not expected - warning",
-			launchConfig:   JobLaunchAPIModel{AskExecutionEnvironmentOnLaunch: false},
-			model:          JobModel{TemplateID: types.Int64Value(1), ExecutionEnvironmentID: types.Int64Value(5)},
-			expectWarnings: true,
-		},
-		// instance_groups
-		{
-			name:         "instance_groups required but not provided",
-			launchConfig: JobLaunchAPIModel{AskInstanceGroupsOnLaunch: true, VariablesNeededToStart: []string{"instance_groups"}},
-			model:        JobModel{TemplateID: types.Int64Value(1), InstanceGroups: types.ListNull(types.Int64Type)},
-			expectError:  true,
-		},
-		{
-			name:           "instance_groups provided but not expected - warning",
-			launchConfig:   JobLaunchAPIModel{AskInstanceGroupsOnLaunch: false},
-			model:          JobModel{TemplateID: types.Int64Value(1), InstanceGroups: basetypes.NewListValueMust(types.Int64Type, []attr.Value{types.Int64Value(5)})},
-			expectWarnings: true,
-		},
 		// credentials
 		{
 			name:         "credentials required but not provided",
-			launchConfig: JobLaunchAPIModel{AskCredentialOnLaunch: true, VariablesNeededToStart: []string{"credential"}},
+			launchConfig: JobLaunchAPIModel{AskCredentialOnLaunch: true, CredentialNeededToStart: true},
 			model:        JobModel{TemplateID: types.Int64Value(1), Credentials: types.ListNull(types.Int64Type)},
 			expectError:  true,
 		},
@@ -1326,13 +1239,7 @@ func TestJobModelCanJobBeLaunched(t *testing.T) {
 			model:          JobModel{TemplateID: types.Int64Value(1), Credentials: basetypes.NewListValueMust(types.Int64Type, []attr.Value{types.Int64Value(1)})},
 			expectWarnings: true,
 		},
-		// labels
-		{
-			name:         "labels required but not provided",
-			launchConfig: JobLaunchAPIModel{AskLabelsOnLaunch: true, VariablesNeededToStart: []string{"labels"}},
-			model:        JobModel{TemplateID: types.Int64Value(1), Labels: types.ListNull(types.Int64Type)},
-			expectError:  true,
-		},
+		// labels (can only be optional at template level, never required)
 		{
 			name:           "labels provided but not expected - warning",
 			launchConfig:   JobLaunchAPIModel{AskLabelsOnLaunch: false},

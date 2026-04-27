@@ -147,14 +147,9 @@ func extractExtraVarsString(extraVarsValue attr.Value) string {
 		return ""
 	}
 
-	switch v := extraVarsValue.(type) {
-	case types.String:
-		return v.ValueString()
-	default:
-		// For customtypes.AAPCustomStringValue and other types with ValueString method
-		if stringer, ok := extraVarsValue.(interface{ ValueString() string }); ok {
-			return stringer.ValueString()
-		}
+	// Handle types.String and customtypes.AAPCustomStringValue via ValueString() interface
+	if stringer, ok := extraVarsValue.(interface{ ValueString() string }); ok {
+		return stringer.ValueString()
 	}
 	return ""
 }
